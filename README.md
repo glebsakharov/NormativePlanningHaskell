@@ -1,6 +1,6 @@
 
 
-![Description](main/schematicFlowDiagram.png)
+![alt](https://raw.githubusercontent.com/glebsakharov/NormativePlanningHaskell/main/schematicFlowDiagram.png)
 
 
 ================================================================================
