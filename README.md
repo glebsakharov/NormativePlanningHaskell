@@ -69,10 +69,12 @@ Because the DSL does not provide built-in variable backtracking, we introduce an
 
 - The planner remains semantically consistent.
 
-Search remains sound under temporal constraints.
-------------------------------------------------------------------------------
-1. The Planning Setting
-------------------------------------------------------------------------------
+- Search remains sound under temporal constraints.
+
+## Background Information 
+
+## 1. The Planning Setting
+
 
 A classical planner searches for a finite sequence of actions:
 
@@ -101,9 +103,9 @@ However, they do not natively enforce *temporal constraints*, such as:
 
 These are naturally expressed in temporal logic. And are inescapable for planning in a normatively constrained domain
 
-------------------------------------------------------------------------------
-2. Linear Temporal Logic over Finite Traces (LTLf)
-------------------------------------------------------------------------------
+
+## 2. Linear Temporal Logic over Finite Traces (LTLf)
+
 
 LTLf (Linear Temporal Logic over finite traces) is a formal language for
 specifying temporal properties of *finite* sequences of states.
@@ -142,9 +144,9 @@ means that φ holds at every state of the trace.
 means that ψ must eventually hold, and φ must hold at all states prior
 to the first occurrence of ψ.
 
-------------------------------------------------------------------------------
-3. Why We Compile LTLf to Finite Automata
-------------------------------------------------------------------------------
+
+## 3. Why We Compile LTLf to Finite Automata
+
 
 Directly evaluating temporal formulas over traces during search is expensive
 and conceptually awkward, because it requires reasoning over prefixes of
@@ -164,9 +166,9 @@ This means:
 Thus, instead of reasoning about formulas over histories, we can reason about
 automaton states.
 
-------------------------------------------------------------------------------
-4. What the Automaton Represents
-------------------------------------------------------------------------------
+
+## 4. What the Automaton Represents
+
 
 The automaton encodes the "progress" of a temporal formula.
 
@@ -197,9 +199,9 @@ The automaton may contain:
 In our norm-enforcement setting, violation states are treated as dead states
 and are pruned immediately during search.
 
-------------------------------------------------------------------------------
-5. Synchronous Product with the Planner
-------------------------------------------------------------------------------
+
+## 5. Synchronous Product with the Planner
+
 
 Conceptually, we construct the synchronous product of:
 
@@ -223,9 +225,9 @@ Thus, norm enforcement reduces to:
 
 rather than trace-based verification.
 
-------------------------------------------------------------------------------
-6. Why LTLf (Not Full LTL)
-------------------------------------------------------------------------------
+
+## 6. Why LTLf (Not Full LTL)
+
 
 Classical LTL assumes infinite traces and is typically compiled into Büchi
 automata with acceptance conditions based on infinite recurrence.
@@ -241,9 +243,9 @@ LTLf is therefore strictly more appropriate, because:
 
 In this module, temporal norms are interpreted over finite plans.
 
-------------------------------------------------------------------------------
-7. Practical Implications for This Module
-------------------------------------------------------------------------------
+
+## 7. Practical Implications for This Module
+
 
 In this implementation:
 
@@ -259,9 +261,9 @@ This ensures:
     ✔ No post-hoc trace checking is required.
     ✔ Norms can be composed modularly by combining automata.
 
-------------------------------------------------------------------------------
-8. Conceptual Summary
-------------------------------------------------------------------------------
+
+## 8. Conceptual Summary
+
 
 LTLf provides a declarative way to specify temporal norms over plans.
 
@@ -283,7 +285,7 @@ This architecture cleanly separates:
 
 while preserving correctness and modularity.
 
-================================================================================
+
 
 
 
