@@ -5,7 +5,7 @@
 
 This project integrates temporal norms into a classical planning framework by compiling temporal logic specifications into finite-state automata and synchronously composing them with a planner’s transition system.
 
-The core idea is simple but powerful:
+The core idea is simple:
 
 - Temporal constraints over plans can be enforced incrementally during search, rather than verified post hoc over completed plans.
 
