@@ -3,24 +3,79 @@
 # LTLf and Finite Automata in Norm-Guided Planning
 
 
-This module integrates temporal norms into a classical planning setting by
-compiling temporal logic specifications into finite-state automata and
-synchronously composing them with the planner’s transition system.
+This project integrates temporal norms into a classical planning framework by compiling temporal logic specifications into finite-state automata and synchronously composing them with a planner’s transition system.
 
-The key idea is that temporal constraints over plans can be enforced 
-incrementally during search, rather than verified post hoc over completed plans.
-Another issue this tries to solve is that of using a DSL written in Haskell,
-that interfaces with a C++-classical planner to normatively constrain action-generation. The DSL doesn't have access to the search tree
-and thus no access to execution paths at the top: the C++ engine owns this. So how do we constrain 
-actions according to Linear Temporal Logic formulas? The answer is to use state machines to process snapshots
-of the world state after a potential action execution and to return a boolean signalling Violation, Waiting or Satisfaction
-of Atomic Propositions. This determines whether or not an action is admissible according to the planner logic and the ethical cosntraints the user/designer imposes on the system. 
+The core idea is simple but powerful:
 
-One outstanding issue is that of state-mutation in the IO-monad. The Effect Monad has IO-functionality and internally uses IOrefs to mutate internal state, allowing us to have a wonderful interface for solving classical planning problems. However,
-for solving problems constrained by LTL formulas, and under conditions where we cannot have access to the execution history of the search, it is necessary to return the world-state to the original state if an action is not admissible. Without a variable-state backtracking mechanism in the DSL, it is necessary to create one ourselves to make sure the system is consistent in a way that allows us to solve problems. 
+Temporal constraints over plans can be enforced incrementally during search, rather than verified post hoc over completed plans.
 
-In future, we intend to introduce weighted norms and empirically verify with QuickCheck the feasibility of satisfying the condition (PrioritiseSafety with 99% success), an outstanding problem in the field.
+Instead of generating a plan and checking it afterwards, we ensure that every action considered during search already respects the specified normative constraints.
 
+Motivation
+
+This work addresses a practical architectural problem.
+
+We use a Haskell-based domain-specific language (DSL) that interfaces with a C++ classical planner (e.g., Fast Downward). The C++ planner owns the search tree and execution paths. The Haskell DSL defines the domain and actions but does not have access to the evolving search history.
+
+This raises a fundamental question:
+
+How can we constrain action generation using Linear Temporal Logic (LTL) formulas if we do not have access to execution traces?
+
+Since temporal logic is naturally defined over traces, and the DSL cannot observe traces directly, we must enforce temporal constraints without direct access to history.
+
+Approach
+
+The solution is to compile Linear Temporal Logic over finite traces (LTLf) into finite-state automata.
+
+At runtime:
+
+After a potential action is executed,
+
+A snapshot of the resulting world state is extracted,
+
+The norm automaton transitions based on that snapshot,
+
+The automaton signals one of:
+
+Violation
+
+Waiting
+
+Satisfaction
+
+If a violation state is reached, the action is deemed inadmissible and pruned from the search.
+
+This effectively transforms temporal constraints into state-based admissibility checks, allowing normative filtering even though the DSL has no access to the full execution trace.
+
+Conceptually, we construct the synchronous product of:
+
+The planning transition system, and
+
+The norm automaton derived from an LTLf formula.
+
+State Mutation and Backtracking
+
+A significant engineering challenge arises from state mutation.
+
+The Effect monad provides IO capabilities and internally uses IORefs to manage mutable planner state. This design yields a clean interface for classical planning but complicates norm enforcement.
+
+If an action:
+
+Mutates the world state,
+
+Advances the norm automaton,
+
+And is later found to violate a temporal constraint,
+
+then the system must revert to the original state. Without proper rollback, the planner’s internal state becomes inconsistent.
+
+Because the DSL does not provide built-in variable backtracking, we introduce an explicit snapshot-and-restore mechanism to ensure:
+
+Norm violations do not leave residual side effects.
+
+The planner remains semantically consistent.
+
+Search remains sound under temporal constraints.
 ------------------------------------------------------------------------------
 1. The Planning Setting
 ------------------------------------------------------------------------------
