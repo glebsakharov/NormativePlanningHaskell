@@ -51,7 +51,7 @@ Conceptually, we construct the synchronous product of:
 
 ### State Mutation and Backtracking
 
-A significant engineering challenge arises from state mutation. The Effect monad provides IO capabilities and internally uses IORefs to manage mutable planner state. This design yields a clean interface for classical planning but complicates norm enforcement.
+A significant engineering challenge arises from state mutation. The Effect monad (as defined by the maintainers of the Haskell DSL) provides IO capabilities and internally uses IORefs to manage mutable planner state. This design yields a clean interface for classical planning but complicates norm enforcement.
 
 If an action:
 
