@@ -1,7 +1,7 @@
 
-================================================================================
+
 LTLf and Finite Automata in Norm-Guided Planning
-================================================================================
+
 
 This module integrates temporal norms into a classical planning setting by
 compiling temporal logic specifications into finite-state automata and
