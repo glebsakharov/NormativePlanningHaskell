@@ -1,8 +1,4 @@
 
-
-![alt](https://raw.githubusercontent.com/glebsakharov/NormativePlanningHaskell/main/schematicFlowDiagram.png?raw=true "Flow-Diagram")
-
-
 ================================================================================
 LTLf and Finite Automata in Norm-Guided Planning
 ================================================================================
@@ -13,6 +9,17 @@ synchronously composing them with the planner’s transition system.
 
 The key idea is that temporal constraints over plans can be enforced 
 incrementally during search, rather than verified post hoc over completed plans.
+Another issue this tries to solve is that of using a DSL written in Haskell,
+that interfaces with a C++-classical planner to normatively constrain action-generation. The DSL doesn't have access to the search tree
+and thus no access to execution paths at the top: the C++ engine owns this. So how do we constrain 
+actions according to Linear Temporal Logic formulas? The answer is to use state machines to process snapshots
+of the world state after a potential action execution and to return a boolean signalling Violation, Waiting or Satisfaction
+of Atomic Propositions. This determines whether or not an action is admissible according to the planner logic and the ethical cosntraints the user/designer imposes on the system. 
+
+One outstanding issue is that of state-mutation in the IO-monad. The Effect Monad has IO-functionality and internally uses IOrefs to mutate internal state, allowing us to have a wonderful interface for solving classical planning problems. However,
+for solving problems constrained by LTL formulas, and under conditions where we cannot have access to the execution history of the search, it is necessary to return the world-state to the original state if an action is not admissible. Without a variable-state backtracking mechanism in the DSL, it is necessary to create one ourselves to make sure the system is consistent in a way that allows us to solve problems. 
+
+In future, we intend to introduce weighted norms and empirically verify with QuickCheck the feasibility of satisfying the condition (PrioritiseSafety with 99% success), an outstanding problem in the field.
 
 ------------------------------------------------------------------------------
 1. The Planning Setting
