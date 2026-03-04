@@ -7,11 +7,11 @@ This project integrates temporal norms into a classical planning framework by co
 
 The core idea is simple but powerful:
 
-Temporal constraints over plans can be enforced incrementally during search, rather than verified post hoc over completed plans.
+- Temporal constraints over plans can be enforced incrementally during search, rather than verified post hoc over completed plans.
 
-Instead of generating a plan and checking it afterwards, we ensure that every action considered during search already respects the specified normative constraints.
+- Instead of generating a plan and checking it afterwards, we ensure that every action considered during search already respects the specified normative constraints.
 
-Motivation
+### Motivation
 
 This work addresses a practical architectural problem.
 
@@ -19,61 +19,55 @@ We use a Haskell-based domain-specific language (DSL) that interfaces with a C++
 
 This raises a fundamental question:
 
-How can we constrain action generation using Linear Temporal Logic (LTL) formulas if we do not have access to execution traces?
+How can we constrain action generation using Linear Temporal Logic (LTL) formulas if we do not have access to execution traces? Since temporal logic is naturally defined over traces, and the DSL cannot observe traces directly, we must enforce temporal constraints without direct access to history.
 
-Since temporal logic is naturally defined over traces, and the DSL cannot observe traces directly, we must enforce temporal constraints without direct access to history.
-
-Approach
+### Approach
 
 The solution is to compile Linear Temporal Logic over finite traces (LTLf) into finite-state automata.
 
 At runtime:
 
-After a potential action is executed,
+- After a potential action is executed,
 
-A snapshot of the resulting world state is extracted,
+- A snapshot of the resulting world state is extracted,
 
-The norm automaton transitions based on that snapshot,
+- The norm automaton transitions based on that snapshot,
 
 The automaton signals one of:
 
-Violation
+- Violation
 
-Waiting
+- Waiting
 
-Satisfaction
+- Satisfaction
 
-If a violation state is reached, the action is deemed inadmissible and pruned from the search.
-
-This effectively transforms temporal constraints into state-based admissibility checks, allowing normative filtering even though the DSL has no access to the full execution trace.
+If a violation state is reached, the action is deemed inadmissible and pruned from the search. This effectively transforms temporal constraints into state-based admissibility checks, allowing normative filtering even though the DSL has no access to the full execution trace.
 
 Conceptually, we construct the synchronous product of:
 
-The planning transition system, and
+- The planning transition system, and
 
-The norm automaton derived from an LTLf formula.
+- The norm automaton derived from an LTLf formula.
 
-State Mutation and Backtracking
+### State Mutation and Backtracking
 
-A significant engineering challenge arises from state mutation.
-
-The Effect monad provides IO capabilities and internally uses IORefs to manage mutable planner state. This design yields a clean interface for classical planning but complicates norm enforcement.
+A significant engineering challenge arises from state mutation. The Effect monad provides IO capabilities and internally uses IORefs to manage mutable planner state. This design yields a clean interface for classical planning but complicates norm enforcement.
 
 If an action:
 
-Mutates the world state,
+- Mutates the world state,
 
-Advances the norm automaton,
+- Advances the norm automaton,
 
-And is later found to violate a temporal constraint,
+- And is later found to violate a temporal constraint,
 
-then the system must revert to the original state. Without proper rollback, the planner’s internal state becomes inconsistent.
+- then the system must revert to the original state. Without proper rollback, the planner’s internal state becomes inconsistent.
 
 Because the DSL does not provide built-in variable backtracking, we introduce an explicit snapshot-and-restore mechanism to ensure:
 
-Norm violations do not leave residual side effects.
+- Norm violations do not leave residual side effects.
 
-The planner remains semantically consistent.
+- The planner remains semantically consistent.
 
 Search remains sound under temporal constraints.
 ------------------------------------------------------------------------------
