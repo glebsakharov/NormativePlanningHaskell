@@ -48,6 +48,12 @@ Conceptually, we construct the synchronous product of:
 - The planning transition system, and
 
 - The norm automaton derived from an LTLf formula.
+- 
+## Outstanding Issues 
+
+### The Need to simplify Temporal Formulas 
+
+Sound manipulation of temporal formulas is central to advancing the norm automaton. The current simplify function handles basic logical reductions, but does not fully normalize formulas in a way that guarantees sound equality checks (φ ≡ ψ). Without robust normalization, automaton states cannot be reliably compared, potentially introducing subtle errors in LTLf progression and violation detection. A more complete simplification and canonicalization procedure is required.
 
 ### State Mutation and Backtracking
 
@@ -63,15 +69,8 @@ If an action:
 
 - then the system must revert to the original state. Without proper rollback, the planner’s internal state becomes inconsistent.
 
-Because the DSL does not provide built-in variable backtracking, we introduce an explicit snapshot-and-restore mechanism to ensure:
 
-- Norm violations do not leave residual side effects.
-
-- The planner remains semantically consistent.
-
-- Search remains sound under temporal constraints.
-
-## Background Information 
+# Background Information 
 
 ## 1. The Planning Setting
 
