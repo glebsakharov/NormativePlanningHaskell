@@ -6,236 +6,10 @@ import FastDownward
 import Data.List ((\\), nub, union, intersect, any)
 import qualified Data.Set as Set  
 import qualified Data.Map as M
+import Control.Applicative
 
 
-{- 
 
-================================================================================
-LTLf and Finite Automata in Norm-Guided Planning
-================================================================================
-
-This module integrates temporal norms into a classical planning setting by
-compiling temporal logic specifications into finite-state automata and
-synchronously composing them with the planner’s transition system.
-
-The key idea is that temporal constraints over plans can be enforced 
-incrementally during search, rather than verified post hoc over completed plans.
-
-------------------------------------------------------------------------------
-1. The Planning Setting
-------------------------------------------------------------------------------
-
-A classical planner searches for a finite sequence of actions:
-
-    a0, a1, a2, ..., an
-
-that transforms an initial state s0 into a state satisfying a goal condition.
-
-Each action induces a transition:
-
-    si --ai--> si+1
-
-A plan is therefore a finite trace:
-
-    s0, s1, s2, ..., sn
-
-Standard planners enforce:
-    - Action preconditions
-    - Goal conditions
-
-However, they do not natively enforce *temporal constraints*, such as:
-
-    - "Safety must always hold."
-    - "A task must eventually be completed."
-    - "Condition A must hold until condition B occurs."
-    - "Event X must occur before event Y."
-
-These are naturally expressed in temporal logic. And are inescapable for planning in a normatively constrained domain
-
-------------------------------------------------------------------------------
-2. Linear Temporal Logic over Finite Traces (LTLf)
-------------------------------------------------------------------------------
-
-LTLf (Linear Temporal Logic over finite traces) is a formal language for
-specifying temporal properties of *finite* sequences of states.
-
-Unlike classical LTL (which is interpreted over infinite traces), LTLf is
-interpreted over finite sequences:
-
-    s0, s1, ..., sn
-
-This makes LTLf particularly appropriate for planning, since plans are finite.
-
-LTLf includes temporal operators such as:
-
-    X φ        (Next)
-    F φ        (Eventually)
-    G φ        (Always)
-    φ U ψ      (Until)
-    ¬φ         (Negation)
-    φ ∧ ψ      (Conjunction)
-    φ ∨ ψ      (Disjunction)
-
-Semantics are defined relative to positions within a finite trace.
-
-For example:
-
-    F φ
-
-means that φ holds at some state si in the trace.
-
-    G φ
-
-means that φ holds at every state of the trace.
-
-    φ U ψ
-
-means that ψ must eventually hold, and φ must hold at all states prior
-to the first occurrence of ψ.
-
-------------------------------------------------------------------------------
-3. Why We Compile LTLf to Finite Automata
-------------------------------------------------------------------------------
-
-Directly evaluating temporal formulas over traces during search is expensive
-and conceptually awkward, because it requires reasoning over prefixes of
-potentially long execution histories.
-
-Instead, we exploit the following fundamental result:
-
-    For every LTLf formula φ, there exists a finite automaton Aφ such that
-    a finite trace satisfies φ if and only if that trace is accepted by Aφ.
-
-This means:
-
-    Temporal logic over traces
-        ⇔
-    Language recognition by a finite automaton
-
-Thus, instead of reasoning about formulas over histories, we can reason about
-automaton states.
-
-------------------------------------------------------------------------------
-4. What the Automaton Represents
-------------------------------------------------------------------------------
-
-The automaton encodes the "progress" of a temporal formula.
-
-Each automaton state summarises:
-
-    - Which sub-obligations of the temporal formula remain to be satisfied
-    - Whether a violation has occurred
-
-The automaton consumes, at each step, a *snapshot* of the world state.
-
-A snapshot is a set of atomic propositions that are true in the current state,
-for example:
-
-    { APSafety, APTaskCompletion }
-
-The transition function:
-
-    δ : Q × Snapshot → Q
-
-advances the automaton state based on which propositions hold after each action.
-
-The automaton may contain:
-
-    - Normal states (norm still satisfiable)
-    - Accepting states (norm satisfied at end of trace)
-    - Violation states (norm irreparably broken)
-
-In our norm-enforcement setting, violation states are treated as dead states
-and are pruned immediately during search.
-
-------------------------------------------------------------------------------
-5. Synchronous Product with the Planner
-------------------------------------------------------------------------------
-
-Conceptually, we construct the synchronous product of:
-
-    (1) The planning transition system
-    (2) The norm automaton
-
-The combined state space becomes:
-
-    (world_state, automaton_state)
-
-For each candidate action:
-
-    1. The world transitions to a successor state.
-    2. A snapshot is extracted.
-    3. The automaton transitions accordingly.
-    4. If the automaton reaches a violation state, the transition is rejected.
-
-Thus, norm enforcement reduces to:
-
-    State-based admissibility filtering
-
-rather than trace-based verification.
-
-------------------------------------------------------------------------------
-6. Why LTLf (Not Full LTL)
-------------------------------------------------------------------------------
-
-Classical LTL assumes infinite traces and is typically compiled into Büchi
-automata with acceptance conditions based on infinite recurrence.
-
-Planning problems, however, produce finite traces.
-
-LTLf is therefore strictly more appropriate, because:
-
-    - Acceptance is defined at the end of a finite trace.
-    - The resulting automata are finite automata (DFA/NFA),
-      not Büchi automata.
-    - No reasoning about infinite repetition is required.
-
-In this module, temporal norms are interpreted over finite plans.
-
-------------------------------------------------------------------------------
-7. Practical Implications for This Module
-------------------------------------------------------------------------------
-
-In this implementation:
-
-    - Temporal formulas are represented explicitly (TemporalFormula).
-    - Relevant atomic propositions are extracted from world states.
-    - A deterministic norm automaton tracks compliance.
-    - The planner state is augmented with an automaton state variable.
-    - Actions are wrapped so that transitions leading to violations are pruned.
-
-This ensures:
-
-    ✔ All generated plans satisfy the temporal norms by construction.
-    ✔ No post-hoc trace checking is required.
-    ✔ Norms can be composed modularly by combining automata.
-
-------------------------------------------------------------------------------
-8. Conceptual Summary
-------------------------------------------------------------------------------
-
-LTLf provides a declarative way to specify temporal norms over plans.
-
-Finite automata provide an operational mechanism to enforce those norms
-incrementally during search.
-
-The core theoretical bridge is:
-
-    LTLf formula φ
-        ⇓ (compilation)
-    Deterministic finite automaton Aφ
-        ⇓ (synchronous composition)
-    Norm-guided planning
-
-This architecture cleanly separates:
-
-    - Domain dynamics (world transitions)
-    - Normative constraints (automaton progression)
-
-while preserving correctness and modularity.
-
-================================================================================
--}
 ----------------------------------------------------
 -- Utility
 ----------------------------------------------------
@@ -265,11 +39,11 @@ data StateFormula
   deriving (Ord, Eq, Show)
 
 data TemporalFormula
-  = TrueF
-  | FalseF
+  = FalseF
+  | TrueF
+  | StateT StateFormula
   | AndT TemporalFormula TemporalFormula
   | OrT TemporalFormula TemporalFormula
-  | StateT StateFormula
   | NotT TemporalFormula
   | Next TemporalFormula
   | Always TemporalFormula
@@ -305,54 +79,173 @@ simplify (NotT FalseF)   = TrueF
 simplify (AndT x y)      = AndT (simplify x) (simplify y)
 simplify (OrT x y)       = OrT (simplify x) (simplify y)
 simplify (NotT x)        = NotT (simplify x)
-simplify x               = x
+simplify (Next x)        = Next $ simplify x  
+simplify (Always x)      = Always $ simplify x 
+simplify (Eventually x)  = Eventually $ simplify x 
+simplify (Until x y)     = Until  (simplify x) (simplify y) 
 
-progress :: Snapshot -> TemporalFormula -> TemporalFormula
-progress _ TrueF  = TrueF
-progress _ FalseF = FalseF
 
-progress snap (StateT sf) =
-  if evalStateFormula snap sf then TrueF else FalseF
 
-progress snap (NotT φ) =
-  simplify $ NotT (progress snap φ)
+withSnapshot :: Var NormAutState -> Effect a -> Effect a
+withSnapshot var action = do
+    original <- readVar var
+    result <- action
+    writeVar var original
+    return result
 
-progress snap (AndT φ ψ) =
-  simplify $ AndT (progress snap φ) (progress snap ψ)
+progress :: Snapshot -> TemporalFormula -> Var NormAutState -> Effect (Var NormAutState)
+progress sn (StateT sf) normState = do
+    state <- readVar normState
+    case state of
+        Waiting ->
+            if evalStateFormula sn sf
+                then do
+                    writeVar normState Satisfied
+                    return normState
+                else do
+                    writeVar normState Violated
+                    empty
+        _ -> return normState
 
-progress snap (OrT φ ψ) =
-  simplify $ OrT (progress snap φ) (progress snap ψ)
+progress sn (NotT f) normState = do 
+    state <- readVar normState 
+    case state of 
+        Waiting -> do 
+            s <- (withSnapshot normState $ do 
+                    progress sn f normState
+                    readVar normState )
+            case s of 
+                Violated -> do 
+                    writeVar normState Violated
+                    return normState
+                Satisfied -> do 
+                    writeVar normState Satisfied
+                    empty 
+                Waiting -> return normState
+        Satisfied -> do 
+            writeVar normState Satisfied
+            empty
+        Violated -> return normState
 
-progress _ (Next φ) = φ
+progress sn (OrT f1 f2) normState = do
+    state <- readVar normState
+    case state of
+        Waiting ->
+            withSnapshot normState (progress sn f1 normState)
+            <|>
+            withSnapshot normState (progress sn f2 normState)
+        _ -> return normState
 
-progress snap (Always φ) =
-  simplify $ AndT (progress snap φ) (Always φ)
 
-progress snap (Eventually φ) =
-  simplify $ OrT (progress snap φ) (Eventually φ)
+progress sn (AndT f1 f2) normState = do
+    state <- readVar normState
+    case state of
+        Waiting -> do
+            s1 <- withSnapshot normState $ do
+                    progress sn f1 normState
+                    readVar normState
 
-progress snap (Until φ ψ) =
-  simplify $
-    OrT (progress snap ψ)
-        (AndT (progress snap φ) (Until φ ψ))
+            s2 <- withSnapshot normState $ do
+                    progress sn f2 normState
+                    readVar normState
+
+            case (s1, s2) of
+                (Satisfied, Satisfied) -> do
+                    writeVar normState Satisfied
+                    return normState
+
+                (Violated, _) -> do
+                    writeVar normState Violated
+                    empty
+
+                (_, Violated) -> do
+                    writeVar normState Violated
+                    empty
+
+                _ -> return normState
+
+        _ -> return normState
+
+progress sn (Next f1) normState = do 
+    state <- readVar normState 
+    case state of 
+        Waiting -> do 
+            s1 <- withSnapshot normState $ do 
+                    progress sn f1 normState 
+                    readVar normState 
+            case s1 of Waiting -> empty 
+                       Satisfied -> do 
+                        writeVar normState Satisfied
+                        return normState 
+                       Violated -> do 
+                        writeVar normState Violated 
+                        empty
+        _ -> return normState
+
+progress sn (Eventually f) normState = do
+    state <- readVar normState
+    case state of
+        Waiting -> do
+            result <- withSnapshot normState $ do
+                progress sn f normState
+                readVar normState
+
+            case result of
+                Satisfied -> do
+                    writeVar normState Satisfied
+                    return normState
+
+                Violated -> return normState
+
+                Waiting -> return normState
+
+        _ -> return normState
+-- f2 must eventually hold and f1 must hold at all states prior to the first occurrence f2   
+progress sn (Until f1 f2) normState = do
+    state <- readVar normState
+    case state of
+        Waiting ->
+            (withSnapshot normState (progress sn f2 normState))
+            <|>
+            (withSnapshot normState $ do
+                progress sn f1 normState
+                progress sn (Until f1 f2) normState)
+
+        _ -> return normState    
+
 
 ----------------------------------------------------
 -- Norm Automaton (Formula-Based)
 ----------------------------------------------------
 
 data NormAutomaton q = NormAutomaton
-  { initialState :: q
-  , transition   :: Snapshot -> q -> q
-  , isViolation  :: q -> Bool
+  { initialState :: Var q
+  , transition   :: Snapshot -> TemporalFormula -> Var q -> Effect (Var q)
+  , isViolation  :: q -> Effect Bool
+  , isAccepting :: q -> Effect Bool
+  , isWaiting :: q -> Effect Bool
   }
 
-compileTemporal :: TemporalFormula -> NormAutomaton TemporalFormula
-compileTemporal φ =
-  NormAutomaton
-    { initialState = φ
-    , transition   = progress
-    , isViolation  = (== FalseF)
-    }
+data NormAutState = Waiting | Satisfied | Violated deriving (Eq, Show, Ord)
+
+violation :: NormAutState -> Effect Bool 
+violation autState  = do 
+    case autState of Violated -> return True 
+                     _ -> return False 
+
+accepting :: NormAutState -> Effect Bool 
+accepting autState = do 
+    case autState of Satisfied -> return True 
+                     _ -> return False 
+
+waiting :: NormAutState -> Effect Bool
+waiting autState = do 
+    case autState of Waiting -> return True 
+                     _ -> return False
+
+
+
+
 
 ----------------------------------------------------
 -- Domain Datatypes
@@ -426,28 +319,37 @@ snapshotFromState prob st = do
 -- Norm-Constrained Action Wrapper
 ----------------------------------------------------
 
+-- Variable backtracking mechanism
+
+
+
 advanceNorm
-  :: (Ord q) 
-  => NormAutomaton q
-  -> Var q
+  :: NormAutomaton NormAutState
+  -> TemporalFormula
+  -> Var NormAutState
   -> Snapshot
   -> Effect ()
-advanceNorm aut normVar snap = do
-  qOld <- readVar normVar
-  let qNew = transition aut snap qOld
+advanceNorm aut tmpf normVar snap = do
+  
+  qNew <- (transition aut snap tmpf normVar)
+  qNew' <- readVar qNew
+  violated <- violation qNew'
+  guard (not (violated))
 
-  guard (not (isViolation aut qNew))
-
-  writeVar normVar qNew
+  writeVar normVar qNew'
 
 constrainAction
-  :: NormAutomaton TemporalFormula
-  -> Var TemporalFormula
+  :: 
+     NormAutomaton NormAutState
+  -> TemporalFormula
+  -> Var NormAutState
+  -> Var NormAutState
   -> ProblemDef
+  -> State 
   -> State
   -> Effect Action
   -> Effect Action
-constrainAction aut normVar probDef st action = do
+constrainAction aut tmpf autState autState' probDef st st' action = do
 
   -- Execute world effects first
   act <- action
@@ -456,59 +358,38 @@ constrainAction aut normVar probDef st action = do
   snap <- snapshotFromState probDef st
 
   -- Advance automaton
-  advanceNorm aut normVar snap
+  advanceNorm aut tmpf autState snap
 
-  return act
+  q <- readVar autState
+  snap' <- snapshotFromState probDef st
 
-  -- | Create deep copies of all PropInfoObjects, preserving the Var structure
-{-cloneProps :: [PropInfoObject] -> Effect [PropInfoObject]
-cloneProps props = forM props $ \Prop{object, location, clear, fireStatus} -> do
-  loc'   <- newVar =<< readVar location
-  clr'   <- newVar =<< readVar clear
-  fire'  <- newVar =<< readVar fireStatus
-  return $ Prop object loc' clr' fire'
+  violated <- violation q 
 
--- | Commit cloned Props back to original ones
-commitProps :: [PropInfoObject] -> [PropInfoObject] -> Effect ()
-commitProps clones originals =
-  forM_ (zip clones originals) $ \(c, o) -> do
-    writeVar (location o) =<< readVar (location c)
-    writeVar (clear o)    =<< readVar (clear c)
-    writeVar (fireStatus o)=<< readVar (fireStatus c)
+  if violated
+    then do rollBack aut autState autState' probDef st st' 
+            guard(not (violated))
+            return act 
+    else return act
 
--- | Safe constrainAction: executes action on clones first
-constrainAction
-  :: NormAutomaton TemporalFormula
-  -> Var TemporalFormula
-  -> ProblemDef
-  -> State
-  -> Effect Action
-  -> Effect Action
-constrainAction aut normVar probDef st action = do
+-- Variable rollback mechanism 
 
-  -- 1. Clone state
-  clones <- cloneProps (objects st)
-  let stClone = st { objects = clones }
+rollBack :: NormAutomaton NormAutState ->
+            Var NormAutState ->
+            Var NormAutState->
+            ProblemDef ->
+            State -> 
+            State ->
+            Effect ()
+rollBack aut normVar normVar' probDef st st' = do 
+     let obs = objects st 
+     let obs' = objects st'
+     forM_ (zip obs obs') $ \(o1,o2) -> do 
+        writeVar (location o1) =<< readVar (location o2)
+        writeVar (clear o1)    =<< readVar (clear o2)
+        writeVar (fireStatus o1) =<< readVar (fireStatus o2)
+        writeVar (normVar) =<< readVar (normVar')
 
-  -- 2. Run action on clone
-  act <- actionOnClone action stClone
 
-  -- 3. Take snapshot and advance norm on clone
-  snap <- snapshotFromState probDef stClone
-  advanceNorm aut normVar snap
-
-  -- 4. If norm passes, commit back
-  commitProps clones (objects st)
-
-  return act
-
--- | Run an Effect action assuming the State object is replaced by clone
---   This depends on your DSL: for many planners you can temporarily swap in cloned Props
-actionOnClone :: Effect Action -> State -> Effect Action
-actionOnClone action stClone = do
-  -- Implementation depends on your Effect DSL
-  -- simplest: assume 'action' reads from the State passed explicitly
-  action-}
 
 ----------------------------------------------------
 -- Problem Definition
@@ -557,7 +438,48 @@ problem = do
   p2Fire <- newVar Burning
   let p2Prop = Prop (ObjectP P2) p2Location p2Clear p2Fire
 
+  ----------------------------------------------------------
+  -- copies 
+  ----------------------------------------------------------
+
+  handState' <- newVar Empty
+  aLocation' <- newVar (OnObj Table)
+  aClear' <- newVar False
+  aFire' <- newVar Safe
+  let aProp' = Prop (ObjectB A) aLocation aClear aFire
+
+  bLocation' <- newVar (OnObj Table)
+  bClear' <- newVar True
+  bFire' <- newVar Safe
+  let bProp' = Prop (ObjectB B) bLocation bClear bFire
+
+  cLocation' <- newVar (OnObj Table)
+  cClear' <- newVar True
+  cFire' <- newVar Safe
+  let cProp' = Prop (ObjectB C) cLocation cClear cFire
+
+  tLocation' <- newVar (OnObj Floor)
+  tClear' <- newVar True
+  tFire' <- newVar Safe
+  let tProp' = Prop Table tLocation tClear tFire
+
+  bucketLocation' <- newVar (OnObj Table)
+  bucketClear' <- newVar True
+  bucketFire' <- newVar Safe
+  let bucketProp' = Prop Bucket bucketLocation bucketClear bucketFire
+
+  p1Location' <- newVar (OnObj (ObjectB A))
+  p1Clear' <- newVar False
+  p1Fire' <- newVar Safe
+  let p1Prop' = Prop (ObjectP P1) p1Location p1Clear p1Fire
+
+  p2Location' <- newVar (OnObj Table)
+  p2Clear' <- newVar True
+  p2Fire' <- newVar Burning
+  let p2Prop' = Prop (ObjectP P2) p2Location p2Clear p2Fire
+
   let state = State [aProp,bProp,cProp,tProp,bucketProp,p1Prop,p2Prop]
+  let state' = State [aProp',bProp',cProp',tProp',bucketProp',p1Prop',p2Prop']
 
   --------------------------------------------------
   -- Goal + Safety
@@ -599,14 +521,32 @@ problem = do
   --------------------------------------------------
   -- Norm Definition
   --------------------------------------------------
+  autState <- newVar Waiting 
+  autState' <- newVar Waiting 
+
+  let 
+      normAut :: NormAutomaton (NormAutState) 
+      normAut = 
+            NormAutomaton 
+              { initialState = autState
+                ,transition = progress 
+                ,isViolation = violation
+                ,isAccepting = accepting
+                ,isWaiting = waiting
+              }
+
 
   let normFormula =
-        Always (StateT (Atom APSafety))
+       AndT (Until (NotT (StateT (Atom APTaskCompletion))) (StateT (Atom APSafety))) (Eventually (StateT (Atom APTaskCompletion)))
 
-  let normAut = compileTemporal normFormula
+  
 
+  {-normVar <- newVar Waiting
+  normVar' <- newVar Waiting-}
+  {-
   normVar <- newVar TrueF 
-  resetInitial normVar (initialState normAut)
+  normVar' <- newVar TrueF -}
+  -- resetInitial normVar (initialState normAut)
 
   --------------------------------------------------
   -- Define Actions (unchanged)
@@ -633,6 +573,9 @@ problem = do
           clrV  = clear prp
           fireV = fireStatus prp
 
+      let propObj' = head (filter (\x -> obj == object x) $ objects state')
+
+
       -- Preconditions
       guard =<< readVar clrV                   -- the object should have nothing on top of it before being picked up
       guard . (== Empty) =<< readVar handState -- the robot hand should be empty before it tries to pick the object up
@@ -646,8 +589,14 @@ problem = do
       
       case loc of
         OnObj support -> do
-          let supportClear = clearOf support   -- Technically a postcondition:
-          writeVar supportClear True           -- make the o2 clear after picking up o1 from its top
+          let supportClear = clearOf support   
+          writeVar supportClear True 
+          {-- rewrite to support backtracking-}
+          let loc' = location propObj' 
+          l' <- readVar loc'
+          let supp (OnObj sup) = clearOf sup 
+          let supportClear' = (supp l')
+          writeVar supportClear' True          
         _ -> pure ()
 
       -- Postconditions
@@ -732,10 +681,10 @@ problem = do
 
   let allProps = [aProp,bProp,cProp,p1Prop,p2Prop,tProp,bucketProp]
 
-  let pickupActions =  [  constrainAction normAut normVar probDef state (pickUp p) | p <- allProps ]
-      putdownActions = [  constrainAction normAut normVar probDef state (putDown p) | p <- allProps ]
-      stackActions   = [  constrainAction normAut normVar probDef state (stack p1 p2) | p1 <- allProps, p2 <- allProps ]
-      douseActions   = [  constrainAction normAut normVar probDef state (douse p) | p <- allProps ]
+  let pickupActions =  [  constrainAction normAut normFormula autState autState' probDef state state' (pickUp p) | p <- allProps ]
+      putdownActions = [  constrainAction normAut normFormula autState autState' probDef state state' (putDown p) | p <- allProps ]
+      stackActions   = [  constrainAction normAut normFormula autState autState' probDef state state' (stack p1 p2) | p1 <- allProps, p2 <- allProps ]
+      douseActions   = [  constrainAction normAut normFormula autState autState' probDef state state' (douse p) | p <- allProps ]
 
   let actions = pickupActions ++ putdownActions ++ stackActions ++ douseActions
 
@@ -803,7 +752,6 @@ main = do
       putStrLn stdout
       putStrLn "Standard error:"
       putStrLn stderr
-
 
 
 
