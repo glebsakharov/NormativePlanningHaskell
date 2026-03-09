@@ -166,21 +166,8 @@ progress sn (AndT f1 f2) normState = do
 
         _ -> return normState
 
-progress sn (Next f1) normState = do 
-    state <- readVar normState 
-    case state of 
-        Waiting -> do 
-            s1 <- withSnapshot normState $ do 
-                    progress sn f1 normState 
-                    readVar normState 
-            case s1 of Waiting -> empty 
-                       Satisfied -> do 
-                        writeVar normState Satisfied
-                        return normState 
-                       Violated -> do 
-                        writeVar normState Violated 
-                        empty
-        _ -> return normState
+progress _ (Next _) normState = return normState
+  
 
 progress sn (Eventually f) normState = do
     state <- readVar normState
