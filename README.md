@@ -92,8 +92,72 @@ As we can see via this recursive definition, the final result of 'toNNF phi' is 
 
 ### Closure Set of a Temporal Formula:
 
+The closure of an LTLf formula is the set of its subformulas taken with the union of the set of its negated subformulas such that the resultant set is simplified and added to {True, False}. 
 
+``` haskell
+closure :: LTLf -> Set.Set LTLf
+closure phi = 
+    let cl = subformulas (toNNF phi)
+        allFormulas = Set.union cl (Set.map Not cl)
+        -- Remove redundant Not (Not ...) formulas
+        simplified = Set.filter (\f -> case f of
+                                        Not (Not _) -> False
+                                        _ -> True) allFormulas
+    in Set.union (Set.fromList [TrueF, FalseF]) simplified
+```
 
+``` haskell
+subformulas :: LTLf -> Set.Set LTLf
+subformulas TrueF = Set.singleton TrueF
+subformulas FalseF = Set.singleton FalseF
+subformulas (Prop a) = Set.singleton (Prop a)
+subformulas (Not phi) = Set.insert (Not phi) (subformulas phi)
+subformulas (And phi psi) = Set.insert (And phi psi) $ Set.union (subformulas phi) (subformulas psi)
+subformulas (Or phi psi) = Set.insert (Or phi psi) $ Set.union (subformulas phi) (subformulas psi)
+subformulas (Next phi) = Set.insert (Next phi) (subformulas phi)
+subformulas (Until phi psi) = Set.insert (Until phi psi) $ Set.union (subformulas phi) (subformulas psi)
+subformulas (Release phi psi) = Set.insert (Release phi psi) $ Set.union (subformulas phi) (subformulas psi)
+```
+
+### Elementary Sets:
+The set of elementary sets is a filtered set of subsets of the closure. The filter conditions are:
+ - no contradictions in the subset
+ - TrueF must be in every subset
+ - FalseF must be in every subset
+ - 
+``` haskell
+generateElementarySets :: Set.Set LTLf -> [Set.Set LTLf]
+generateElementarySets cl = 
+  filter (isElementary cl) (allSubsets cl)
+```
+
+``` haskell
+isElementary :: Set.Set LTLf -> Set.Set LTLf -> Bool
+isElementary cl b =
+  -- No contradictions
+  Set.null (Set.intersection b (Set.map Not b))
+  &&
+  -- TrueF must be in every elementary set
+  (Set.member TrueF b)
+  &&
+  -- FalseF must not be in any elementary set
+  (not (Set.member FalseF b))
+  &&
+  -- Boolean closure for And
+  (forallInSet (\psi -> 
+    case psi of
+      And phi chi -> (Set.member (And phi chi) b) == (Set.member phi b && Set.member chi b)
+      _ -> True) b)
+  &&
+  -- Boolean closure for Or
+  (forallInSet (\psi ->
+    case psi of
+      Or phi chi -> (Set.member (Or phi chi) b) == (Set.member phi b || Set.member chi b)
+      _ -> True) b)
+  where
+    forallInSet p s = all p (Set.toList s)
+
+```
 
 # Testing and Debugging the LTLf to DFA translation
 
