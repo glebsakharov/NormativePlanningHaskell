@@ -123,7 +123,7 @@ subformulas (Release phi psi) = Set.insert (Release phi psi) $ Set.union (subfor
 The set of elementary sets is a filtered set of subsets of the closure. The filter conditions are:
  - no contradictions in the subset
  - TrueF must be in every subset
- - FalseF must be in every subset
+ - FalseF must not be in any subset
  - 
 ``` haskell
 generateElementarySets :: Set.Set LTLf -> [Set.Set LTLf]
