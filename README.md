@@ -60,6 +60,40 @@ compileLTLfToDFA formula =
     then error "No elementary sets found - formula may be unsatisfiable"
     else nfaToDFA transitions initials finals
 ```
+### toNNF
+
+The first step in the algorithm is to convert an LTLf formula to Negation Normal Form (NNF). This simply means we are moving the Negation 'inward' inside formulas using De Morgans laws and analagous rules for temporal operators, so that negation only acts on propositional atoms, and not on temporal operators. Here is the toNNF function: 
+
+``` haskell
+toNNF :: LTLf -> LTLf
+toNNF TrueF = TrueF
+toNNF FalseF = FalseF
+toNNF (Prop a) = Prop a
+toNNF (Not TrueF) = FalseF
+toNNF (Not FalseF) = TrueF
+toNNF (Not (Not phi)) = toNNF phi
+toNNF (Not (Prop a)) = Not (Prop a)
+toNNF (Not (And phi psi)) = Or (toNNF (Not phi)) (toNNF (Not psi))
+toNNF (Not (Or phi psi)) = And (toNNF (Not phi)) (toNNF (Not psi))
+toNNF (Not (Next phi)) = Next (toNNF (Not phi))
+toNNF (Not (Until phi psi)) = Release (toNNF (Not phi)) (toNNF (Not psi))
+toNNF (Not (Release phi psi)) = Until (toNNF (Not phi)) (toNNF (Not psi))
+toNNF (And phi psi) = And (toNNF phi) (toNNF psi)
+toNNF (Or phi psi) = Or (toNNF phi) (toNNF psi)
+toNNF (Next phi) = Next (toNNF phi)
+toNNF (Until TrueF phi) = Until TrueF (toNNF phi)  
+toNNF (Until FalseF phi) = toNNF phi  
+toNNF (Until phi TrueF) = TrueF  
+toNNF (Until phi FalseF) = toNNF (always phi)
+toNNF (Until phi psi) = Until (toNNF phi) (toNNF psi)
+toNNF (Release phi psi) = Release (toNNF phi) (toNNF psi)
+```
+As we can see via this recursive definition, the final result of 'toNNF phi' is a temporal formula whose negations are pushed inwards.
+
+### Closure Set of a Temporal Formula:
+
+
+
 
 # Testing and Debugging the LTLf to DFA translation
 
@@ -91,7 +125,7 @@ ltlfGenWithClass n Linear = frequency [
 ltlfGenWithClass n Complex = 
     ltlfGenWithClass n Simple
 ```
-Once we have our Arbitrary instances, we are able to define a generator called smallLTLf2:
+Instead of setting 'arbitrary = ltlfGenWithClass' for LTLf formulas, we first define a generator that uses ltlgGenWithClass called smallLTLf2:
 ``` haskell
 smallLTLf2 :: Gen LTLf
 smallLTLf2 = sized $ \n -> 
@@ -101,7 +135,14 @@ smallLTLf2 = sized $ \n ->
         (1, ltlfGenWithClass (min n 2) Complex)
     ]
 ```
+Now we define Arbitrary for LTLf with smallLTLf2:
+``` haskell
+instance Arbitrary LTLf where
+	arbitrary = smallLTLf2
+```
 smallLTLf2 uses a statistically inspired strategy to generate LTLf formulas. The frequency function essentially accepts a frequency distribution with weights 5, 4, and 1 for Simple, Linear and Complex formulas respectively. This fixes the probabilities of occurrence of each type of formula in the generation process. This is part of the strategy we use to make sure we are testing the functions in the translation code with 'representative' examples of LTLf formulas. We are mainly interested in the kind of formula likely to appear in a planning scenario of interest. That being said, non-representative examples are still valuable as they stress-test the translation for correctness.
+
+Thus, while we have a higher chance of generating formulas of particular interest in planning scenarios in our tests, we still generate some which are not that interesting, to make sure we are covering cases which are still valid LTLf formulas that wont see use in the final planning code. 
 
 
 
