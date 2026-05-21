@@ -12,4 +12,36 @@ This ReadMe is here to explain the current state of the integration of temporal 
 
 # Testing and Debugging the LTLf to DFA translation
 
+``` haskell
+instance Arbitrary Atom where 
+	arbitrary = oneof [
+			Atom <$> (pure "safety"),
+			Atom <$> (pure "taskCompletion")
+		]
+
+instance Arbitrary LTLf where 
+	arbitrary = sized ltlfGen 
+		where 
+			ltlfGen :: Int -> Gen LTLf
+			ltlfGen 0 = oneof [
+					pure TrueF,
+					pure FalseF,
+					Prop <$> arbitrary
+				]
+			ltlfGen n = frequency [
+					(1, pure TrueF),
+					(1, pure FalseF),
+					(2, Prop <$> arbitrary),
+					(2, Not <$> ltlfGen (n-1)),
+					(2, And <$> ltlfGen(n-1) <*> ltlfGen(n-1)),
+					(2, Or <$> ltlfGen(n-1) <*> ltlfGen(n-1)),
+					(1, Next <$> ltlfGen(n-1)),
+					(1, Until <$> ltlfGen(n-1) <*> ltlfGen(n-1)),
+					(1, Release <$> ltlfGen(n-1) <*> ltlfGen(n-1))
+				]
+
+smallLTLf1 :: Gen LTLf 
+smallLTLf1 = resize 3 arbitrary
+```
+
 
