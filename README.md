@@ -12,6 +12,9 @@ This ReadMe is here to explain the current state of the integration of temporal 
 
 # Testing and Debugging the LTLf to DFA translation
 
+## Generating Custom Datatypes for Tests
+In order to be able to test properties of the translation with QuickCheck, we will need to supply QuickCheck with methods for generating instances of the custom datatypes we use to build our definition of LTLf formulas. This is done by creating instances of the typeclass Arbitrary for the datatypes Atom and LTLf.
+
 ``` haskell
 instance Arbitrary Atom where 
 	arbitrary = oneof [
@@ -36,8 +39,9 @@ ltlfGenWithClass n Linear = frequency [
   ]
 ltlfGenWithClass n Complex = 
     ltlfGenWithClass n Simple
-
-
+```
+Once we have our Arbitrary instances, we are able to define a generator called smallLTLf2:
+``` haskell
 smallLTLf2 :: Gen LTLf
 smallLTLf2 = sized $ \n -> 
     frequency [
@@ -46,5 +50,12 @@ smallLTLf2 = sized $ \n ->
         (1, ltlfGenWithClass (min n 2) Complex)
     ]
 ```
+smallLTLf2 uses a statistically inspired strategy to generate LTLf formulas. The frequency function essentially accepts a frequency distribution with weights 5, 4, and 1 for Simple, Linear and Complex formulas respectively. This fixes the probabilities of occurrence of each type of formula in the generation process. This is part of the strategy we use to make sure we are testing the functions in the translation code with 'representative' examples of LTLf formulas. We are only interested in the kind of formula likely to appear in a planning scenario of interest. That being said, non-representative examples are still valuable as they stress-test the translation for correctness.
+
+
+
+
+
+
 
 
