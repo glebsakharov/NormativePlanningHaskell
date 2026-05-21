@@ -19,29 +19,32 @@ instance Arbitrary Atom where
 			Atom <$> (pure "taskCompletion")
 		]
 
-instance Arbitrary LTLf where 
-	arbitrary = sized ltlfGen 
-		where 
-			ltlfGen :: Int -> Gen LTLf
-			ltlfGen 0 = oneof [
-					pure TrueF,
-					pure FalseF,
-					Prop <$> arbitrary
-				]
-			ltlfGen n = frequency [
-					(1, pure TrueF),
-					(1, pure FalseF),
-					(2, Prop <$> arbitrary),
-					(2, Not <$> ltlfGen (n-1)),
-					(2, And <$> ltlfGen(n-1) <*> ltlfGen(n-1)),
-					(2, Or <$> ltlfGen(n-1) <*> ltlfGen(n-1)),
-					(1, Next <$> ltlfGen(n-1)),
-					(1, Until <$> ltlfGen(n-1) <*> ltlfGen(n-1)),
-					(1, Release <$> ltlfGen(n-1) <*> ltlfGen(n-1))
-				]
+data FormulaClass = Simple | Linear | Balanced | Complex
 
-smallLTLf1 :: Gen LTLf 
-smallLTLf1 = resize 3 arbitrary
+ltlfGenWithClass :: Int -> FormulaClass -> Gen LTLf
+ltlfGenWithClass 0 _ = oneof [pure TrueF, pure FalseF, Prop <$> arbitrary]
+ltlfGenWithClass n Simple = frequency [
+    (5, Prop <$> arbitrary),
+    (2, Not <$> (ltlfGenWithClass (n-1) Simple)),
+    (1, Next <$> (ltlfGenWithClass (n-1) Simple))
+  ]
+ltlfGenWithClass n Linear = frequency [
+    (3, Prop <$> arbitrary),
+    (2, Not <$> (ltlfGenWithClass (n-1) Linear)),
+    (1, Until <$> (ltlfGenWithClass (n-1) Linear) <*> (ltlfGenWithClass 0 Linear))
+    
+  ]
+ltlfGenWithClass n Complex = 
+    ltlfGenWithClass n Simple
+
+
+smallLTLf2 :: Gen LTLf
+smallLTLf2 = sized $ \n -> 
+    frequency [
+        (5, ltlfGenWithClass (min n 2) Simple),
+        (4, ltlfGenWithClass (min n 2) Linear),
+        (1, ltlfGenWithClass (min n 2) Complex)
+    ]
 ```
 
 
