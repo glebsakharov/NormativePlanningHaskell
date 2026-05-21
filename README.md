@@ -199,7 +199,7 @@ smallLTLf2 = sized $ \n ->
         (1, ltlfGenWithClass (min n 2) Complex)
     ]
 ```
-Now we define Arbitrary for LTLf with smallLTLf2:
+Now we define Arbitrary for LTLf with smallLTLf2: 
 ``` haskell
 instance Arbitrary LTLf where
 	arbitrary = smallLTLf2
