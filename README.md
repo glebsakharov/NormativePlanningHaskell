@@ -313,7 +313,7 @@ nfaToDFA transitions nfaInitials nfaFinals =
     transMap = Map.fromListWith Set.union
       [ ((from, label), Set.singleton to)
       | NFATransition from to label <- transitions
-      ]
+      ] 
     
    
     nfaInitialSet = Set.fromList nfaInitials
