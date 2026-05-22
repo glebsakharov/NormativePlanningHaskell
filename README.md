@@ -286,6 +286,30 @@ smallLTLf2 uses a statistically inspired strategy to generate LTLf formulas. The
 
 Thus, while we have a higher chance of generating formulas of particular interest in planning scenarios in our tests, we still generate some which are not that interesting, to make sure we are covering cases which are still valid LTLf formulas that wont see use in the final planning code. 
 
+Now that we have a generator for LTLf formulas, we can test the code that uses this data for correctness. The following property checks whether, given a 'Next phi' formula in the source state for an NFA, the target contains phi. Ie, if 'Next phi' is true at step s_{i}, then s_{i+1} step should have phi as true: 
+
+``` haskell
+propTransitionNextConsistent :: Property
+propTransitionNextConsistent = forAll smallLTLf2 $ \formula ->
+    let cl = closure (toNNF formula)
+        elemSets = generateElementarySets cl
+        transitions = buildNFATransitions cl elemSets
+    in all (\(NFATransition from to _) -> 
+            all (\nextF -> Set.member (unwrapNext nextF) to)
+                (Set.filter isNextFormula from))
+        transitions
+```
+
+
+
+
+
+
+
+
+
+
+
 
 
 
