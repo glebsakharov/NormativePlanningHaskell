@@ -8,6 +8,31 @@ This ReadMe is here to explain the current state of the integration of temporal 
 
 # Temporal Planning planning problem
 
+``` haskell
+constrainAction :: 
+     TemporalConstraint                    
+  -> ProblemDef
+  -> State
+  -> Var String                 
+  -> Effect Action 
+  -> Effect Action
+constrainAction tmpConstraint pDef st dfaStateVar act = do 
+
+    act' <- act 
+    let dfaInfo = constraintInfo tmpConstraint
+    
+    snap <- computeSnapshotFromState st pDef 
+    
+    currentState <- readVar dfaStateVar
+    
+    case findDFATransition dfaInfo currentState snap of
+        Just nextState -> do
+            writeVar dfaStateVar nextState
+            return act'
+        Nothing -> do
+            empty
+```
+
 # LTLf to Deterministic Finite Automaton
 
 ## Datatypes and Definitions for LTLf formulas:
@@ -344,6 +369,68 @@ nfaToDFA transitions nfaInitials nfaFinals =
   in DFA initialDFAState dfaTransitionsMap dfaFinalStates 
 ```
 
+## Passing traces through the DFA
+
+In order to use the DFA in the planning system, we need to make it operational. We achieve this with the following two functions:
+
+``` haskell
+runDFA :: (Ord s, Ord a) => DFA s a -> [a] -> s
+runDFA dfa trace =
+  foldl' (\state symbol -> 
+    case Map.lookup (state, symbol) (dfaTransitions dfa) of
+      Just next -> next
+      Nothing -> error "No transition defined"
+  ) (dfaInitial dfa) trace
+
+accepts :: (Ord s, Ord a) => DFA s a -> [a] -> Bool
+accepts dfa trace =
+  let finalState = runDFA dfa trace
+  in Set.member finalState (dfaFinals dfa)
+```
+runDFA takes a list of atoms (the language of the DFA is a set of atoms) and searches the transition map of the DFA for a matching transition. If their is a (state, symbol) pair - state, atom pair - then the associated state is returned. This process is repeated for each atom in the list in order until the trace has been exhausted. 
+
+accepts checks whether the result of runDFA on a trace is contained in the set of final states. If it is, the DFA accepts the trace.
+
+Here is an example of a DFA in action: 
+
+``` haskell
+testDFA :: IO ()
+testDFA = do
+  let task = Atom "task_completion"
+      safety = Atom "safety"
+      formula = And
+        (Until (Not (Prop task)) (Prop safety))
+        (eventually (Prop task))
+  
+  let dfa = compileLTLfToDFA formula
+  
+  -- Test trace 1: safety always true, task becomes true
+  let trace1 = [
+        		Set.fromList [safety],           -- step 1: safety true, task false
+        		Set.fromList [safety],           -- step 2: safety true, task false  
+        		Set.fromList [safety, task]      -- step 3: both true
+      			]
+  
+  putStrLn $ "Trace 1 accepted? " ++ show (accepts dfa trace1)
+  
+  let trace2 = [
+        		Set.fromList [task],
+        		Set.fromList [task],                 
+        		Set.fromList [task]
+      		   ]
+  
+  putStrLn $ "Trace 2 accepted? " ++ show (accepts dfa trace2)
+  
+  
+  let trace3 = [
+        		Set.fromList [safety],
+        		Set.fromList [safety],
+        		Set.fromList [safety]
+      			]
+  
+  putStrLn $ "Trace 3 accepted? " ++ show (accepts dfa trace3)
+```
+If you run the above code in the ghci REPL, you should see that the DFA accepts the first trace, and then rejects the last two traces. 
 
 # Testing and Debugging the LTLf to DFA translation
 
