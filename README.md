@@ -235,6 +235,114 @@ isConsistentTransition cl b b' label =
   where
     forallInSet p s = all p (Set.toList s)
 ```
+### Initial and Final States of the NFA
+
+The next step in the algorithm invloves determining which are the initial and final states in the NFA. This procedure involves filtering the elementary sets of the formula down to a list of sets of LTLf formulas. We first convert the original formula to NNF, then we apply the filter: the set remains if the original formula (in NNF) is contained in the set, either as a negation or otherwise.
+
+``` haskell
+containsFormula :: Set.Set LTLf -> LTLf -> Bool
+containsFormula b phi = 
+  case phi of
+    Not psi -> Set.member (Not psi) b  
+    _ -> Set.member phi b
+
+-- Find initial states (must contain the original formula)
+findInitialStates :: LTLf -> [Set.Set LTLf] -> [Set.Set LTLf]
+findInitialStates phi elementarySets =
+  let phi_nnf = toNNF phi
+  in filter (\b -> containsFormula b phi_nnf) elementarySets
+```
+Next we find the final states (the states where acceptance is determined). 
+
+``` haskell
+isFinalState :: Set.Set LTLf -> Bool
+isFinalState b = 
+    -- No Next formulas
+    not (any isNextFormula (Set.toList b))
+    &&
+    -- No unsatisfied Until formulas (including Eventually)
+    not (any (\psi -> 
+        case psi of
+            -- Eventually phi (Until TrueF phi)
+            Until TrueF phi -> 
+                not (Set.member phi b)
+            
+            -- Regular Until φ ψ
+            Until phi chi -> 
+                not (Set.member chi b) && 
+                (not (Set.member phi b) || not (Set.member (Until phi chi) b))
+            
+            -- Anything else is not an unsatisfied obligation
+            _ -> False)
+        (Set.toList b))
+
+findFinalStates :: [Set.Set LTLf] -> Set.Set (Set.Set LTLf)
+findFinalStates = Set.fromList . filter isFinalState
+```
+### Converting an NFA to a DFA 
+
+Now that we have identified and collected the final and intitial states of the NFA, we have enough information to 'determinize' it.
+
+First we have the datatype for DFA's:
+
+``` haskell
+data DFA s a = DFA
+  { dfaInitial :: s
+  , dfaTransitions :: Map.Map (s, a) s
+  , dfaFinals :: Set.Set s
+  } deriving (Show, Eq, Ord)
+```
+
+Instead of storing the transitions in a list, we build the DFA explicity as a record with three fields. There is the initial state of type s. The the dfaTransitions of type 'Map.Map (s, a) s'. We store the transitions in this way for quicker access - once we have our DFA available to influence the planner, we want the acceptance checks to run quickly. And lastly we have the final states, the dfaFinals, stored as sets of type s, 'Set.Set s'.
+
+Now we turn to the nfaDFA function:
+
+``` haskell
+nfaToDFA :: [NFATransition LTLf] 
+         -> [Set.Set LTLf]  -- Initial states
+         -> Set.Set (Set.Set LTLf)  -- Final states
+         -> DFA (Set.Set (Set.Set LTLf)) (Set.Set Atom)
+nfaToDFA transitions nfaInitials nfaFinals =
+  let
+    -- Get all alphabet symbols (all subsets of atoms from transitions)
+    allAtoms = Set.unions [label | NFATransition _ _ label <- transitions]
+    alphabet = Set.toList (Set.powerSet allAtoms)
+    
+    -- Build transition map for quick lookup
+    transMap :: Map.Map (Set.Set LTLf, Set.Set Atom) (Set.Set (Set.Set LTLf))
+    transMap = Map.fromListWith Set.union
+      [ ((from, label), Set.singleton to)
+      | NFATransition from to label <- transitions
+      ]
+    
+   
+    nfaInitialSet = Set.fromList nfaInitials
+    initialDFAState = epsilonClosure nfaInitialSet transMap
+    sinkState = Set.empty
+    -- Compute all reachable DFA states
+    allDFAStates = Set.insert sinkState (closureDeterminize (Set.singleton initialDFAState) alphabet transMap)
+    
+    -- Build DFA transitions
+    dfaTransitionsMap = Map.fromList
+	  [ ((dfaState, symbol), nextDFAState)
+	  | dfaState <- Set.toList allDFAStates
+	  , symbol <- alphabet
+	  , let nextDFAState = 
+	          let next = epsilonClosure 
+	                      (Set.unions 
+	                        [ Map.findWithDefault Set.empty (nfaState, symbol) transMap
+	                        | nfaState <- Set.toList dfaState
+	                        ]) transMap
+	          in if Set.null next then sinkState else next
+	  ]    
+    
+    -- Final DFA states: any DFA state containing an NFA final state
+    dfaFinalStates = Set.filter 
+      (\dfaState -> not (Set.null (Set.intersection dfaState nfaFinals)))
+      allDFAStates
+    
+  in DFA initialDFAState dfaTransitionsMap dfaFinalStates 
+```
 
 
 # Testing and Debugging the LTLf to DFA translation
