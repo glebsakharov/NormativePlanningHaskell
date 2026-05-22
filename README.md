@@ -124,7 +124,9 @@ The set of elementary sets is a filtered set of subsets of the closure. The filt
  - no contradictions in the subset
  - TrueF must be in every subset
  - FalseF must not be in any subset
- - 
+ - If 'And phi chi' is a member of the subset, then phi and chi must both be members
+ - If 'Or phi chi' is a member, then phi or chi must be members
+   
 ``` haskell
 generateElementarySets :: Set.Set LTLf -> [Set.Set LTLf]
 generateElementarySets cl = 
@@ -158,6 +160,82 @@ isElementary cl b =
     forallInSet p s = all p (Set.toList s)
 
 ```
+### NFA Transitions 
+
+The next step in the procedure for translating an LTLf formula into a DFA is to translate it first into an NFA. We don't build an NFA per say, but rather the list of its transitions: 
+
+``` haskell
+buildNFATransitions :: Set.Set LTLf -> [Set.Set LTLf] -> [NFATransition LTLf]
+buildNFATransitions cl elementarySets =
+    [ NFATransition b b' label
+    | b <- elementarySets
+    , b' <- elementarySets
+    , label <- allPossibleLabels  
+    , isConsistentTransition cl b b' label
+    ]
+  where
+    allAtoms = Set.unions [atomsFromLiteral f | f <- Set.toList cl, isLiteral f]
+    allPossibleLabels = Set.toList (Set.powerSet allAtoms)
+```
+
+Where NFATransition is defined as:
+
+``` haskell
+data NFATransition a = NFATransition
+  { nfaFrom :: Set.Set a
+  , nfaTo :: Set.Set a
+  , nfaLabel :: Set.Set Atom
+  } deriving (Show, Eq, Ord)
+```
+So we can see that a state in the NFA corresponds to a set of LTLf formulas, selected from the elementary sets, and a label for a transition is simply an atomic proposition. But we need to impose a condition, the transition must be consistent, hence the function in the list comprehension: isConsistentTransition.
+
+This function takes three sets of LTLf formulas: the closure of the original formula and the two proposed sets from which we will select the source and target states for each transition - the final argument is the label.
+
+``` haskell
+-- Check if a transition is consistent with the observed label
+isConsistentTransition :: Set.Set LTLf -> Set.Set LTLf -> Set.Set LTLf -> Set.Set Atom -> Bool
+isConsistentTransition cl b b' label =
+  -- Condition 1: The label must be consistent with the literals in b
+  (all (\lit -> 
+      case lit of
+        Prop a -> Set.member a label == Set.member lit b
+        Not (Prop a) -> (not (Set.member a label)) == Set.member lit b
+        _ -> True)
+      (Set.filter isLiteral b))
+  &&
+  -- Condition 2: All next obligations must be satisfied in b'
+  (Set.isSubsetOf (nextSet b) b')
+  &&
+  -- Condition 3: Until conditions
+  (all (\psi ->
+      case psi of
+        Until phi chi -> 
+          if Set.member (Until phi chi) b
+          then 
+            -- Until is satisfied if chi holds now, 
+            -- OR (phi holds now AND Until holds in next state)
+            holdsInLabel chi label ||
+            (holdsInLabel phi label && Set.member (Until phi chi) b')
+          else True
+        _ -> True)
+      (Set.toList b))
+  &&
+  -- Condition 4: Release conditions (dual of Until)
+  (all (\psi ->
+      case psi of
+        Release phi chi ->
+          if Set.member (Release phi chi) b
+          then
+            -- Release holds if chi holds now AND (phi holds now OR Release holds in next state)
+            holdsInLabel chi label &&
+            (holdsInLabel phi label || Set.member (Release phi chi) b')
+          else True
+        _ -> True)
+      (Set.toList b))
+  where
+    forallInSet p s = all p (Set.toList s)
+```
+
 
 # Testing and Debugging the LTLf to DFA translation
 
