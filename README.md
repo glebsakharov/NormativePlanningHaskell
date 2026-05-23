@@ -292,7 +292,7 @@ isFinalState b =
             Until TrueF phi -> 
                 not (Set.member phi b)
             
-            -- Regular Until φ ψ
+            -- Regular Until phi chi
             Until phi chi -> 
                 not (Set.member chi b) && 
                 (not (Set.member phi b) || not (Set.member (Until phi chi) b))
