@@ -74,7 +74,7 @@ updateAutomaton tmpConstraint pDef st dfaStateVar act = do
     return act'
 ```
 
-And this is it. You just need to translate an LTLf formula to a DFA and track its state as the search progresses.
+And this is it. You just need to translate an LTLf formula to a DFA and track its state as the search progresses. Next we move on to explaining precisely how we have done this.
 
 # LTLf to Deterministic Finite Automaton
 
