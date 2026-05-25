@@ -1,37 +1,80 @@
 
 
-# LTLf and Finite Automata in Norm-Guided Planning
+# Norm-Guided Planning
 
 This ReadMe is here to explain the current state of the integration of temporal planning and thus norm-guided planning into Fast Downward via the fastdownward library from Hackage. Fast Downward is a classical domain indepenedent planner written in C++. fastdownward is a Domain Specific Language for defining planning problems, converting them into a format Fast Downward recognises and solving them in Fast Downward. But fastdownward is written in Haskell. It is essentially a wrapper to Fast Downward.
 
-# A classical planning problem in fastdownward: Gripper
 
 # Temporal Planning planning problem
 
+## Explanation
+
+The temporal planning problem we want to solve is a variant of BlocksWorld, the original 'toy problem' in AI. In this variant, there are three blocks: A, B and C. But there is also a man on fire, and a bucket of water. It is clear from the description what any sane person might want the robot arm to do first: pick up the bucket of water and douse the burning man before restacking the blocks. The temporal nature of the problem is 'interocular'. 
+
+But how might we use fastdownward to solve it? 
+
+Well we have to follow the standard approach in temporal planning: Use Linear Temporal Logic over Finite Traces and the well known correspondance between Deterministic Finite Automata. I'll explain the approach briefly here. In essence the behaviour we want to enforce in the above BlocksWorld variant is described by the LTLf formula (~task Until safety) and (Eventually task). This formula describes the states in a successful temporal plan from initial to goal state. That is, each state should adhere to that logical relationship that prescribes that no action is taken to finish the task until safety has been achieved. The formula thus desrcibes the relationship between each state in order from start to finish, or over what is called a trace, a sequence of states. Each state in the trace has associated with it a proposition, either safety or task or neither/empty. 
+
+Now, each Linear Temporal Logic Formula over Finite Traces has associated with it a Deterministic Finite Automaton. The language of the automaton is a set of propositions such as {safety, task}. Perhaps you see where we are going now. 
+
+The way we enforce the desired temporal ordering in the end plan is this: translate an LTLf formula to a DFA; update the state of the DFA with each action; set the goal so that it is satisfied if the DFA state is a final state in the DFA (ie the acceptance condition of a DFA). If the DFA state is found to be in a final state, the planner is able to store this as a possible solution.
+
+The more technical way to describe what we are doing here is creating the product of the planners' transition system and the DFA describing the temporal formula. We are then asking the planner to search this product transition system in order to find a plan.
+
+## BlocksWorld Variant
+
+Now we move on to the solution to the problem. 
+
+It is best in this case to move to the end of the source file rather than start at the beginning.
+
+We solve a problem using the fastdownward library by calling the function solve, which takes as arguments a search configuration, a list of possible actions and a list of goal conditions:
+
+It looks like this: 
+
 ``` haskell
-constrainAction :: 
+solve
+    Exec.bjolp
+    actions
+    [FastDownward.any [dfaStateName ?= stateName | stateName <- Set.toList $ dfaFinalStateNames $ constraintInfo temporalConstraint ]]
+```
+Exec.bjolp is the default search configuration defined in the Exec module. actions are a list of actions we have defined in the 'blocksWorldEthical.hs' file. The last list is a bit of a mouthful. It is just the list of goal conditions and states that if the DFA state variable carries the name of any of the final states in the DFA, then the goal has been reached. 
+
+The list of actions is as so: 
+
+``` haskell
+let pickupActions =  [  updateAutomaton temporalConstraint probDef state dfaStateName (pickUp p) | p <- [aProp,bProp,cProp,bucketProp] ]
+      putdownActions = [  updateAutomaton temporalConstraint probDef state dfaStateName (putDown p) | p <- [aProp,bProp,cProp,bucketProp] ]
+      stackActions   = [  updateAutomaton temporalConstraint probDef state dfaStateName (stack p1 p2) | p1 <- [aProp,bProp,cProp], p2 <- [aProp,bProp,cProp] ]
+      douseActions   = [  updateAutomaton temporalConstraint probDef state dfaStateName (douse p) | p <- [p1Prop,p2Prop] ]
+
+  let actions = pickupActions ++ putdownActions ++ stackActions ++ douseActions
+```
+
+And updateAutomaton is defined like this:
+
+``` haskell
+updateAutomaton :: 
      TemporalConstraint                    
   -> ProblemDef
   -> State
   -> Var String                 
   -> Effect Action 
   -> Effect Action
-constrainAction tmpConstraint pDef st dfaStateVar act = do 
-
+updateAutomaton tmpConstraint pDef st dfaStateVar act = do 
     act' <- act 
     let dfaInfo = constraintInfo tmpConstraint
     
     snap <- computeSnapshotFromState st pDef 
-    
     currentState <- readVar dfaStateVar
     
     case findDFATransition dfaInfo currentState snap of
-        Just nextState -> do
-            writeVar dfaStateVar nextState
-            return act'
-        Nothing -> do
-            empty
+        Just nextState -> writeVar dfaStateVar nextState
+        Nothing -> empty
+    
+    return act'
 ```
+
+And this is it. You just need to translate an LTLf formula to a DFA and track its state as the search progresses.
 
 # LTLf to Deterministic Finite Automaton
 
